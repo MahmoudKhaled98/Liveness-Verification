@@ -1,0 +1,35 @@
+{
+    "name": "liveness_verify",
+    "short_name": "liveness_verify",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0175C2",
+    "theme_color": "#0175C2",
+    "description": "A Flutter Web application designed for real-time face alignment and liveness detection using WebRTC and AWS Rekognition. The app captures live video, analyzes facial positioning, and ensures the user is properly centered. It provides real-time feedback for misaligned faces and automatically retries capture until the correct position is achieved. To prevent spoofing, it detects liveness by analyzing facial movements like blinking and head turns. Built with Clean Architecture, BLoC state management, and secure API integration.",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
