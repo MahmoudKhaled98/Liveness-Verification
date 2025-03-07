@@ -37,14 +37,10 @@ The system uses multiple factors to verify liveness:
 - Detects looking left, right, up, and down
 - Validates natural eye movement patterns
 
-#### Blink Detection
-- Calculates Eye Aspect Ratio (EAR)
-- Monitors eye state (open/closed)
-- Features:
-  - Static threshold at 0.429 for blink detection
-  - Requires minimum 3 blinks for verification
-  - Debounce mechanism to prevent false detections
-  - Minimum 200ms interval between blinks
+#### Smile Detection
+ Verifies natural facial expressions
+ Requires a genuine smile with high confidence
+ Completes the liveness verification process
 
 ### 3. User Interface
 - Real-time video feed with face outline guide
@@ -52,158 +48,88 @@ The system uses multiple factors to verify liveness:
 - Status messages for user guidance
 - Progress indicators for liveness verification
 
-## Key Components
-
-### 1. Core Components
-- **di.dart**: Dependency injection setup using GetIt
-- **failure.dart**: Error handling and failure cases
-
-### 2. Domain Layer
-
-#### Entities
-- **FaceAnalysisResult**
-  - Handles face detection results
-  - Manages bounding box calculations
-  - Processes quality metrics
-  - Coordinates liveness checks
-
-- **FaceMovementTracker**
-  - movementThreshold = 2.7
-  - eyeMovementThreshold = 0.021
-  - blinkThreshold = 0.4219
-  - requiredBlinkCount = 3
-  - minBlinkInterval = 200ms
-  
-  Key Functions:
-  - calculateEAR(): Computes Eye Aspect Ratio
-  - detectEyeMovement(): Tracks eye position changes
-  - hasDetectedBlinking: Validates blink patterns
-  - isLivenessConfirmed: Checks all liveness criteria
-  
-
-#### Use Cases
-- **AnalyzeFaceUseCase**: Coordinates face analysis operations
-
-#### Repositories
-- **FaceRepository**: Interface for face analysis operations
-
-### 3. Data Layer
-
-#### Models
-- **FaceAnalysisModel**: Converts AWS Rekognition response into application data model, handling face detection results including confidence scores, landmarks, and quality metrics
-
-- **CustomLandmark**: Represents facial landmark points (eyes, nose, mouth) with x,y coordinates and type identification
-
-- **EyePoint**: Specialized model for eye-related landmarks used in blink detection and eye movement tracking
-
-- **BoundingBox**: Handles face frame dimensions and positioning for proper face alignment checks
-
-- **FacePosition**: Tracks face orientation through yaw, pitch, and roll angles for movement detection
-
-- **CustomPose**: Manages head pose data from AWS Rekognition for natural movement validation
-
-- **CustomImageQuality**: Processes image quality metrics including brightness, sharpness, and eye state confidence scores
-
-#### Repositories
-- **FaceRepositoryImpl**: 
-  - Implements FaceRepository
-  - Handles AWS Rekognition API integration
-  - Processes face analysis responses
-
-### 4. Presentation Layer
-
-#### Blocs
-- **FaceBloc**: 
-  - Manages application state
-  - Handles face analysis events
-  - Coordinates liveness verification
-
-#### Events
-- **UpdateFaceData**: Updates face image data
-- **AnalyzeFace**: Triggers face analysis
-- **CheckLiveness**: Initiates liveness verification
-- **ResetAnalysis**: Resets verification state
-
-#### States
-- **FaceInitial**: Initial state
-- **FaceAnalyzing**: Processing state
-- **FaceAnalyzed**: Analysis complete state
-- **FaceError**: Error state
-- **FaceVerificationComplete**: Verification success state
-
-#### Widgets
-- **VideoFeedWidget**:
-  - Manages camera feed
-  - Handles frame capture
-  - Implements face guide overlay
-
-- **LiveAnalysisResultsWidget**:
-  - Displays analysis results
-  - Shows liveness status
-  - Provides user feedback
-
-- **FaceShapeClipper**:
-  - Creates face outline guide
-  - Implements visual guidelines
-
-### 5. Key Features Implementation
-
-#### Face Detection
-- **Properties**:
-  - TOO_CLOSE_THRESHOLD = 0.65
-  - TOO_FAR_THRESHOLD = 0.18
-  - confidence threshold = 90%
-#### Liveness Detection
-- **Requirements**:
-  - Head Movement: Natural movement within thresholds
-  - Eye Movement: At least 2 different movements
-  - Blinking: Minimum 3 valid blinks
-  - Timing: 200ms minimum between blinks
-#### Face Alignment
-- **Criteria**:
-  - Yaw: 0 to 10 degrees
-  - Pitch: 0 to 10 degrees
-  - Roll: 0 to 10 degrees
-  - Distance: Between 18% and 65% of frame
-
-
-### 6. API Integration
-
-#### AWS Rekognition
-- Endpoint: Cloudflare Worker proxy
-- Features:
-  - Face detection
-  - Landmark detection
-  - Pose estimation
-  - Quality metrics
-
-### 7. Performance Optimizations
-- Frame capture rate limiting
-- Image compression before analysis
-- Efficient state management
-- Responsive UI calculations
 
 ## Architecture
 
-The project follows Clean Architecture principles:
+The project follows Clean Architecture principles with three main layers:
 
-### Layers
-1. **Presentation Layer**
-   - Screens and Widgets
-   - BLoC for state management
-   - User interface components
+### 1. Domain Layer
 
-2. **Domain Layer**
-   - Use Cases
-   - Entities
-   - Repository Interfaces
+#### Entities
+- **FaceAnalysisResult**: Processes face detection results and verification status
+- **FaceMovement**: Handles head movement tracking
+- **EyePoint**: Manages eye position tracking
+- **FaceDetectionConfig**: Configures detection thresholds
 
-3. **Data Layer**
-   - Repository Implementations
-   - Data Models
-   - External Services Integration
+#### Use Cases
+- **AnalyzeFaceUseCase**: Coordinates face analysis
+- **HeadMovementDetectionUseCase**: Validates head movements
+- **EyeMovementDetectionUseCase**: Validates eye movements
+
+#### Repositories
+- **FaceRepository**: Interface for face analysis operations
+- **FaceDataProvider**: Interface for face tracking data
+
+### 2. Data Layer
+
+#### Models
+- **FaceAnalysisModel**: Converts face analysis data
+- **CustomLandmark**: Represents facial landmark points
+
+#### Repositories
+- **FaceRepositoryImpl**: Implements face analysis operations
+- **FaceRemoteDataSource**: Handles external API communication
+
+### 3. Presentation Layer
+
+#### BLoC Pattern
+- **FaceBloc**: Manages verification state and process
+- **Events**: StartVerification, StopVerification, AnalyzeFace
+- **States**: Initial, Analyzing, Analyzed, Error, Complete
+
+#### Widgets
+- **VideoFeedWidget**: Camera feed and frame capture
+- **VerificationProgressBar**: Step-by-step progress
+- **LiveAnalysisResultsWidget**: Real-time feedback
+
+## Verification Process
+
+1. **Initial Setup**
+   - User clicks "Start Verifying"
+   - Camera initializes
+   - Face detection begins
+
+2. **Face Positioning**
+   - Guide user to proper distance
+   - Ensure face is centered
+   - Verify proper alignment
+
+3. **Liveness Checks**
+   - Detect natural head movements
+   - Track eye movements in different directions
+   - Verify genuine smile
+   - Confirm all movements within thresholds
+
+4. **Verification Complete**
+   - All checks passed
+   - Success confirmation
+   - Process completion
+
+## Configuration Parameters
+
+### Face Detection
+- Proper distance thresholds: 20% - 80% of frame
+- Face alignment tolerance: ±15 degrees
+- Minimum confidence: 90%
+
+### Movement Detection
+- Head movement threshold: 3.5
+- Eye movement threshold: 0.0178
+- Required frames for validation: 4
+
 
 ## Setup and Usage
+ **Installation**
 
 1. **Environment Setup**
    - Configure AWS Rekognition credentials
@@ -214,21 +140,17 @@ The project follows Clean Architecture principles:
    flutter run -d chrome
    
 
-## Liveness Verification Process
 
-1. User clicks "Start Verifying"
-2. System begins face analysis
-3. Guides user to proper position
-4. Monitors for:
-   - Natural head movements
-   - Eye movements
-   - Multiple blinks
-5. Confirms liveness when all criteria are met
+# Security Features
 
-## Security Features
-
-- Debounce mechanisms to prevent rapid-fire attempts
-- Confidence thresholds for detection accuracy
-- Multiple factor verification requirement
+- Multi-factor liveness verification
 - Natural movement pattern validation
+- Confidence thresholds for accuracy
+- Progressive verification steps
 
+## Notes
+
+- Designed for web platform using WebRTC
+- Optimized for real-time processing
+- Provides intuitive user feedback
+- Implements secure verification flow

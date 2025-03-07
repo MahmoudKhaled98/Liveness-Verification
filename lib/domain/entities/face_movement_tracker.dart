@@ -1,287 +1,292 @@
-class EyePoint {
-  final double x;
-  final double y;
-  final String type;
-//0.425
-  EyePoint({required this.x, required this.y, required this.type});
-}
+import 'face_detection_config.dart';
+import 'face_movement.dart';
+import 'eye_point.dart';
 
+/// Tracks and analyzes face movements for liveness detection.
+///
+/// Maintains history of head movements, eye positions, and facial expressions
+/// to determine if a real person is present based on natural movements.
+/// Uses configurable thresholds for movement detection and validation.
 class FaceMovementTracker {
-  final List<Map<String, double>> poseHistory = [];
-  final List<Map<String, Map<String, double>>> eyePositionsHistory = [];
-  final List<bool> blinkHistory = [];
-  final int requiredFrames = 8;
-  final double movementThreshold = 2.7;
-  final double eyeMovementThreshold = 0.021; // Adjusted threshold for eye movement
-  final double blinkThreshold = 0.4219;  // Static threshold for blink detection
-  final int minBlinkFrames = 1;  // At least 1 frames of closed eyes for a valid blink
-  final int maxBlinkFrames = 5;  // Allow up to 5 frames for slower blinks
-  List<String> detectedMovements = [];
-  final int requiredBlinkCount = 2;  // Number of blinks needed for liveness
-  final List<double> earHistory = [];  // Store EAR values for moving average
-  double? baselineEAR;  // Baseline EAR when eyes are fully open
-  DateTime? firstBlinkTime;  // Track when blinking started
-  final int movingAverageWindow = 2;    // Keep small window for smooth EAR values
-  final double blinkThresholdRatio = 0.98;  // Detect very subtle changes (98.0% of baseline)
-  final int minBlinkDurationFrames = 1;  // Minimum frames for valid blink
-  final int maxBlinkDurationFrames = 5;  // Maximum frames for valid blink
-  final double minBlinksPerMinute = 15;  // Minimum normal blink rate
-  final double maxBlinksPerMinute = 20;  // Maximum normal blink rate
-  final int minRequiredBlinks = 2;  // Minimum number of blinks needed
-  bool prevEyesOpen = true;
-  int blinkCount = 0;
-  DateTime? lastBlinkTime;
-  final int minBlinkInterval = 200;  // Minimum time between blinks (milliseconds)
-  final double confidenceThreshold = 0.90;  // 90% confidence threshold
+  /// Configuration parameters for movement detection thresholds.
+  final FaceDetectionConfig config;
 
-  Map<String, double> getEyeCenter(List<EyePoint> eyePoints) {
-    double x = eyePoints.map((p) => p.x).reduce((a, b) => a + b) / eyePoints.length;
-    double y = eyePoints.map((p) => p.y).reduce((a, b) => a + b) / eyePoints.length;
-    return {'x': x, 'y': y};
-  }
+  /// History of recorded head pose movements.
+  final List<FaceMovement> poseHistory = [];
 
-  String detectEyeMovement(Map<String, double> prevEye, Map<String, double> currEye) {
-    double dx = currEye['x']! - prevEye['x']!;
-    double dy = currEye['y']! - prevEye['y']!;
+  /// History of recorded eye positions.
+  final List<Map<String, EyePoint>> eyePositionsHistory = [];
 
-    if (dx.abs() < eyeMovementThreshold && dy.abs() < eyeMovementThreshold) {
-      return "Stable";
+  /// Set of unique movement types detected during eye tracking.
+  final Set<String> detectedMovements = {};
+
+  /// Whether required head movements have been confirmed.
+  bool _headMovementConfirmed = false;
+
+  /// Whether required eye movements have been confirmed.
+  bool _eyeMovementConfirmed = false;
+
+  /// Whether a smile has been detected.
+  bool _smileDetected = false;
+
+  /// Creates a new [FaceMovementTracker] instance.
+  ///
+  /// Optionally accepts [config] for customizing detection parameters.
+  /// Uses default configuration if none provided.
+  FaceMovementTracker({
+    FaceDetectionConfig? config,
+  }) : config = config ?? const FaceDetectionConfig(
+    movementThreshold: 3.5,
+    eyeMovementThreshold: 0.0170,
+    requiredFrames: 3,
+  );
+
+  /// Processes a new frame of face tracking data.
+  ///
+  /// Takes face position angles ([yaw], [pitch], [roll]), facial [landmarks],
+  /// and [faceDetails] to update movement detection state. Processes movements
+  /// in sequence: head movement, then eye movement, then smile detection.
+  void addFrame(
+    double? yaw,
+    double? pitch,
+    double? roll,
+    List<Map<String, dynamic>> landmarks,
+    Map<String, dynamic> faceDetails,
+  ) {
+    if (!_isValidFrameData(yaw, pitch, roll, landmarks, faceDetails)) {
+      reset();
+      return;
     }
 
-    if (dx.abs() > dy.abs()) {
-      return dx > 0 ? "Looking Right" : "Looking Left";
-    } else {
-      return dy > 0 ? "Looking Down" : "Looking Up";
-    }
-  }
+    _processHeadMovement(yaw!, pitch!, roll!);
 
-  double calculateEAR(List<EyePoint> eyePoints) {
-    // Filter only eye corner points (left, right, up, down)
-    List<EyePoint> cornerPoints = eyePoints.where((point) {
-      return point.type.contains('EyeLeft') || 
-             point.type.contains('EyeRight') || 
-             point.type.contains('EyeUp') || 
-             point.type.contains('EyeDown');
-    }).toList();
+    if (_headMovementConfirmed) {
+      _processEyeMovements(landmarks);
 
-    if (cornerPoints.length < 4) return 1.0;
-
-    try {
-      // Find the points
-      var leftPoint = cornerPoints.firstWhere((p) => p.type.endsWith('EyeLeft'));
-      var rightPoint = cornerPoints.firstWhere((p) => p.type.endsWith('EyeRight'));
-      var upPoint = cornerPoints.firstWhere((p) => p.type.endsWith('EyeUp'));
-      var downPoint = cornerPoints.firstWhere((p) => p.type.endsWith('EyeDown'));
-
-      // Calculate distances
-      double verticalDist = (upPoint.y - downPoint.y).abs();
-      double horizontalDist = (leftPoint.x - rightPoint.x).abs();
-
-      if (horizontalDist == 0) return 1.0;
-
-      // Calculate raw EAR without normalization
-      double ear = verticalDist / horizontalDist;
-      
-      print('Eye points - Left: (${leftPoint.x}, ${leftPoint.y}), Right: (${rightPoint.x}, ${rightPoint.y})');
-      print('Eye points - Up: (${upPoint.x}, ${upPoint.y}), Down: (${downPoint.x}, ${downPoint.y})');
-      print('EAR calculation - Vertical: $verticalDist, Horizontal: $horizontalDist, EAR: $ear');
-      return ear;
-    } catch (e) {
-      print('Error calculating EAR: $e');
-      return 1.0;
-    }
-  }
-
-  // Calculate moving average of EAR values
-  double _calculateMovingAverage(double newEAR) {
-    earHistory.add(newEAR);
-    if (earHistory.length > movingAverageWindow) {
-      earHistory.removeAt(0);
-    }
-    return earHistory.reduce((a, b) => a + b) / earHistory.length;
-  }
-
-  // Initialize baseline EAR from initial frames
-  void _updateBaselineEAR(double currentEAR) {
-    if (baselineEAR == null) {
-      baselineEAR = currentEAR;
-    } else {
-      // More weight on current value to adapt faster
-      baselineEAR = baselineEAR! * 0.7 + currentEAR * 0.3;
-    }
-  }
-
-  void addFrame(double? yaw, double? pitch, double? roll, List<Map<String, dynamic>> landmarks) {
-    if (yaw == null || pitch == null || roll == null) return;
-    
-    poseHistory.add({
-      'yaw': yaw,
-      'pitch': pitch,
-      'roll': roll,
-    });
-
-    // Extract eye landmarks
-    List<EyePoint> leftEyePoints = [];
-    List<EyePoint> rightEyePoints = [];
-
-    for (var landmark in landmarks) {
-      String type = landmark['type'] as String;
-      double x = landmark['x'] as double;
-      double y = landmark['y'] as double;
-
-      // Only collect actual eye points, not eyebrow points
-      if (type.contains('leftEye') && !type.contains('Brow')) {
-        leftEyePoints.add(EyePoint(x: x, y: y, type: type));
-        print('Added left eye point: $type at x:$x, y:$y');
-      } else if (type.contains('rightEye') && !type.contains('Brow')) {
-        rightEyePoints.add(EyePoint(x: x, y: y, type: type));
-        print('Added right eye point: $type at x:$x, y:$y');
+      if (_eyeMovementConfirmed) {
+        _processSmile(faceDetails);
       }
     }
+  }
 
-    print('Left eye points count: ${leftEyePoints.length}');
-    print('Right eye points count: ${rightEyePoints.length}');
+  /// Validates that all required face data is present and valid.
+  bool _isValidFrameData(
+    double? yaw,
+    double? pitch,
+    double? roll,
+    List<Map<String, dynamic>> landmarks,
+    Map<String, dynamic> faceDetails,
+  ) {
+    return yaw != null &&
+        pitch != null &&
+        roll != null &&
+        landmarks.isNotEmpty &&
+        faceDetails.isNotEmpty;
+  }
 
-    // Calculate EAR values
-    double leftEAR = calculateEAR(leftEyePoints);
-    double rightEAR = calculateEAR(rightEyePoints);
-    double avgEAR = (leftEAR + rightEAR) / 2;
-    double smoothedEAR = _calculateMovingAverage(avgEAR);
+  /// Processes head movement data to detect significant changes.
+  ///
+  /// Updates pose history and checks for significant movement patterns.
+  void _processHeadMovement(double yaw, double pitch, double roll) {
+    final movement = FaceMovement(yaw: yaw, pitch: pitch, roll: roll);
 
-    // Determine if eyes are open based on EAR
-    bool eyesOpen = smoothedEAR >= blinkThreshold;
-    double confidence = 1.0 - (smoothedEAR - blinkThreshold).abs();
-
-    // Detect blink with debounce
-    DateTime now = DateTime.now();
-    if (!eyesOpen && prevEyesOpen && confidence > confidenceThreshold) {
-      if (lastBlinkTime == null || 
-          now.difference(lastBlinkTime!).inMilliseconds > minBlinkInterval) {
-        blinkCount++;
-        lastBlinkTime = now;
-        print('Valid blink detected! Count: $blinkCount');
-      }
-    }
-    prevEyesOpen = eyesOpen;
-
-    // Store blink state for history
-    blinkHistory.add(!eyesOpen);
-
-    // Keep reasonable history
-    if (blinkHistory.length > 20) {
-      blinkHistory.removeAt(0);
-    }
-
-    print('Blink detection - EAR: $smoothedEAR, Eyes Open: $eyesOpen');
-    print('Confidence: ${(confidence * 100).toStringAsFixed(1)}%, Blink Count: $blinkCount');
-
-    // Calculate eye centers
-    Map<String, Map<String, double>> currentEyePositions = {
-      'leftEye': getEyeCenter(leftEyePoints),
-      'rightEye': getEyeCenter(rightEyePoints),
-    };
-
-    eyePositionsHistory.add(currentEyePositions);
-
-    // Keep only the last N frames
-    if (poseHistory.length > requiredFrames) {
+    if (poseHistory.length >= config.requiredFrames) {
       poseHistory.removeAt(0);
+    }
+    poseHistory.add(movement);
+
+    if (!_headMovementConfirmed) {
+      _headMovementConfirmed = _hasDetectedHeadMovement();
+    }
+  }
+
+  /// Determines if significant head movement has occurred.
+  ///
+  /// Analyzes the pose history to detect movements exceeding the threshold.
+  bool _hasDetectedHeadMovement() {
+    if (poseHistory.length < config.requiredFrames) return false;
+
+    for (int i = 1; i < poseHistory.length; i++) {
+      final current = poseHistory[i];
+      final previous = poseHistory[i - 1];
+
+      final movement = FaceMovement(
+        yaw: current.yaw - previous.yaw,
+        pitch: current.pitch - previous.pitch,
+        roll: current.roll - previous.roll,
+      );
+
+      if (movement.isSignificantMovement(config.movementThreshold)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Processes eye movement data to detect gaze changes.
+  ///
+  /// Extracts and tracks eye positions to detect natural eye movements.
+  void _processEyeMovements(List<Map<String, dynamic>> landmarks) {
+    if (!_headMovementConfirmed) return;
+
+    final eyePoints = _extractEyePoints(landmarks);
+    final currentEyes = _groupEyePoints(eyePoints);
+
+    if (eyePositionsHistory.isEmpty) {
+      eyePositionsHistory.add(currentEyes);
+      return;
+    }
+
+    final movement = _detectEyeMovement(
+      eyePositionsHistory.last,
+      currentEyes,
+    );
+
+    if (movement != "Stable") {
+      detectedMovements.add(movement);
+      _eyeMovementConfirmed = detectedMovements.length >= 2;
+    }
+
+    if (eyePositionsHistory.length >= config.requiredFrames) {
       eyePositionsHistory.removeAt(0);
     }
+    eyePositionsHistory.add(currentEyes);
+  }
 
-    // Detect eye movements if we have enough history
-    if (eyePositionsHistory.length >= 2) {
-      var prevFrame = eyePositionsHistory[eyePositionsHistory.length - 2];
-      var currFrame = eyePositionsHistory.last;
+  /// Extracts eye points from facial landmarks.
+  ///
+  /// Converts landmark data into [EyePoint] objects for tracking.
+  List<EyePoint> _extractEyePoints(List<Map<String, dynamic>> landmarks) {
+    return landmarks
+        .where((l) => l['type'].toString().toLowerCase().contains('eye'))
+        .map((l) => EyePoint(
+              x: l['x'] as double,
+              y: l['y'] as double,
+              type: l['type'] as String,
+            ))
+        .toList();
+  }
 
-      String leftEyeMovement = detectEyeMovement(
-        prevFrame['leftEye']!, 
-        currFrame['leftEye']!
-      );
-      String rightEyeMovement = detectEyeMovement(
-        prevFrame['rightEye']!, 
-        currFrame['rightEye']!
-      );
+  /// Groups eye points by left and right eye.
+  ///
+  /// Takes raw [points] and returns a map with averaged positions for each eye.
+  Map<String, EyePoint> _groupEyePoints(List<EyePoint> points) {
+    final Map<String, List<EyePoint>> grouped = {'left': [], 'right': []};
 
-      if (leftEyeMovement != "Stable" && rightEyeMovement != "Stable") {
-        detectedMovements.add(leftEyeMovement);
-        if (detectedMovements.length > 5) {
-          detectedMovements.removeAt(0);
+    for (final point in points) {
+      if (point.type.toLowerCase().contains('left')) {
+        grouped['left']!.add(point);
+      } else if (point.type.toLowerCase().contains('right')) {
+        grouped['right']!.add(point);
+      }
+    }
+
+    return {
+      'left': _getEyeCenter(grouped['left']!),
+      'right': _getEyeCenter(grouped['right']!),
+    };
+  }
+
+  /// Calculates the center point from a list of eye points.
+  ///
+  /// Returns the average position of all points in the list.
+  EyePoint _getEyeCenter(List<EyePoint> points) {
+    if (points.isEmpty) {
+      return EyePoint(x: 0, y: 0, type: 'unknown');
+    }
+
+    final double x = points.map((p) => p.x).reduce((a, b) => a + b) / points.length;
+    final double y = points.map((p) => p.y).reduce((a, b) => a + b) / points.length;
+    return EyePoint(x: x, y: y, type: points.first.type);
+  }
+
+  /// Detects eye movement direction between frames.
+  ///
+  /// Compares previous and current eye positions to determine movement direction.
+  String _detectEyeMovement(
+    Map<String, EyePoint> prevEyes,
+    Map<String, EyePoint> currEyes,
+  ) {
+    for (final eyeType in ['left', 'right']) {
+      final prev = prevEyes[eyeType]!;
+      final curr = currEyes[eyeType]!;
+
+      final dx = curr.x - prev.x;
+      final dy = curr.y - prev.y;
+
+      if (dx.abs() > config.eyeMovementThreshold ||
+          dy.abs() > config.eyeMovementThreshold) {
+        if (dx.abs() > dy.abs()) {
+          return dx > 0 ? "Looking Right" : "Looking Left";
+        } else {
+          return dy > 0 ? "Looking Down" : "Looking Up";
+        }
+      }
+    }
+    return "Stable";
+  }
+
+  /// Processes smile detection from face details.
+  ///
+  /// Analyzes smile confidence and emotion data to detect genuine smiles.
+  void _processSmile(Map<String, dynamic> faceDetails) {
+    if (!_eyeMovementConfirmed) return;
+
+    if (faceDetails['Smile'] != null) {
+      var smile = faceDetails['Smile'];
+      if (smile['Value'] == true && (smile['Confidence'] as num) >= 80) {
+        _smileDetected = true;
+        return;
+      }
+    }
+
+    if (faceDetails['Emotions'] != null && faceDetails['Emotions'] is List) {
+      var emotions = faceDetails['Emotions'] as List;
+      for (var emotion in emotions) {
+        if (emotion['Type'].toString().toLowerCase() == 'happy' &&
+            (emotion['Confidence'] as num) >= 80) {
+          _smileDetected = true;
+          return;
         }
       }
     }
   }
 
-  bool get hasDetectedEyeMovement {
-    if (detectedMovements.length < 3) return false;
-
-    // Check if we have detected different eye movements
-    Set<String> uniqueMovements = detectedMovements.toSet();
-    return uniqueMovements.length >= 2; // At least two different eye movements
-  }
-
-  bool get hasEnoughFrames => poseHistory.length >= requiredFrames;
-
-  bool get hasDetectedHeadMovement {
-    if (!hasEnoughFrames) return false;
-
-    double maxYawDiff = 0;
-    double maxPitchDiff = 0;
-    double maxRollDiff = 0;
-
-    for (int i = 1; i < poseHistory.length; i++) {
-      maxYawDiff = _max(maxYawDiff, 
-          (poseHistory[i]['yaw']! - poseHistory[i-1]['yaw']!).abs());
-      maxPitchDiff = _max(maxPitchDiff, 
-          (poseHistory[i]['pitch']! - poseHistory[i-1]['pitch']!).abs());
-      maxRollDiff = _max(maxRollDiff, 
-          (poseHistory[i]['roll']! - poseHistory[i-1]['roll']!).abs());
-    }
-
-    return maxYawDiff > movementThreshold || 
-           maxPitchDiff > movementThreshold || 
-           maxRollDiff > movementThreshold;
-  }
-
-  bool get hasDetectedBlinking {
-    print('Blink validation - Count: $blinkCount/$requiredBlinkCount');
-    
-    // Simply check if we have detected at least 3 blinks
-    return blinkCount >= requiredBlinkCount;
-  }
-
-  bool get isLivenessConfirmed => 
-      hasDetectedHeadMovement && 
-      hasDetectedEyeMovement && 
-      hasDetectedBlinking;
-
-  String get livenessMessage {
-    if (!hasEnoughFrames) {
-      return 'Please move your head and eyes...';
-    }
-    if (!hasDetectedHeadMovement) {
-      return 'Please move your head slightly';
-    }
-    if (!hasDetectedEyeMovement) {
-      return 'Please look around naturally';
-    }
-    if (!hasDetectedBlinking) {
-      return 'Please blink naturally';
-    }
-    return 'Liveness confirmed';
-  }
-
-  double _max(double a, double b) => a > b ? a : b;
-
+  /// Resets all tracking state.
+  ///
+  /// Clears movement history and resets all detection flags.
   void reset() {
     poseHistory.clear();
     eyePositionsHistory.clear();
     detectedMovements.clear();
-    blinkHistory.clear();
-    earHistory.clear();
-    firstBlinkTime = null;
-    blinkCount = 0;
-    prevEyesOpen = true;
-    lastBlinkTime = null;
+    _headMovementConfirmed = false;
+    _eyeMovementConfirmed = false;
+    _smileDetected = false;
   }
-} 
+
+  /// Whether all required liveness checks have been confirmed.
+  bool get isLivenessConfirmed =>
+      _headMovementConfirmed && _eyeMovementConfirmed && _smileDetected;
+
+  /// Gets the current liveness verification status message.
+  String get livenessMessage {
+    if (poseHistory.length < config.requiredFrames) {
+      return 'Please move your head...';
+    }
+    if (!_headMovementConfirmed) {
+      return 'Please move your head slightly';
+    }
+    if (!_eyeMovementConfirmed) {
+      return 'Now, please look around naturally';
+    }
+    if (!_smileDetected) {
+      return 'Please smile :)';
+    }
+    return 'Liveness confirmed';
+  }
+
+  // Getters for state
+  bool get isHeadMovementConfirmed => _headMovementConfirmed;
+  bool get isEyeMovementConfirmed => _eyeMovementConfirmed;
+  bool get isSmileDetected => _smileDetected;
+}

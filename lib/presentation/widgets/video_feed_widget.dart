@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:image/image.dart' as img;
-
 import '../screens/home_screen.dart';
 
 class VideoFeedWidget extends StatefulWidget {
@@ -18,10 +17,10 @@ class VideoFeedWidget extends StatefulWidget {
   });
 
   @override
-  _VideoFeedWidgetState createState() => _VideoFeedWidgetState();
+  VideoFeedWidgetState createState() => VideoFeedWidgetState();
 }
 
-class _VideoFeedWidgetState extends State<VideoFeedWidget> {
+class VideoFeedWidgetState extends State<VideoFeedWidget> {
   final _localRenderer = RTCVideoRenderer();
   MediaStream? _localStream;
   bool _isCameraInitialized = false;
@@ -139,15 +138,19 @@ class _VideoFeedWidgetState extends State<VideoFeedWidget> {
   Widget build(BuildContext context) {
     print('VideoFeedWidget: Building, camera initialized: $_isCameraInitialized');
     if (!_isCameraInitialized) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: CircularProgressIndicator(
+          color: Colors.grey,
+        ),
+      );
     }
     final screenSize = MediaQuery.of(context).size;
 
     return Stack(
       children: [
         Container(
-          height: screenSize.width/5.4,
-          width: screenSize.width/2,
+          height:screenSize.height/2.2,
+          width: double.infinity,
           color: Colors.white12,
           child: ClipPath(
             clipper: FaceShapeClipper(),
@@ -162,8 +165,8 @@ class _VideoFeedWidgetState extends State<VideoFeedWidget> {
         CustomPaint(
           painter: FaceGuidelinesPainter(),
           child: SizedBox(
-            height: screenSize.width/5.4,
-            width: screenSize.width/2,
+            height: screenSize.height/1.7,
+            width: screenSize.width/1.8,
           ),
         ),
       ],
@@ -179,12 +182,12 @@ class FaceGuidelinesPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
 
-    final centerX = size.width / 2;
-    final centerY = size.height / 2;
+    final centerX = size.width / 1.113;
+    final centerY = size.height / 2.6;
 
     // Draw face outline
-    final faceWidth = size.width * 0.25;
-    final faceHeight = size.height * 1;
+    final faceWidth = size.width * 0.9;
+    final faceHeight = size.height *0.79;
     final faceRect = Rect.fromCenter(
       center: Offset(centerX, centerY),
       width: faceWidth,
@@ -206,24 +209,24 @@ class FaceGuidelinesPainter extends CustomPainter {
     );
 
     // Add text guide
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: 'Align face within outline',
-        style: TextStyle(
-          color: Colors.yellow,
-          fontSize: size.width/90,fontWeight: FontWeight.bold
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-    textPainter.paint(
-      canvas,
-      Offset(
-        centerX - textPainter.width / 2,
-        size.height * 0.9,
-      ),
-    );
+    // final textPainter = TextPainter(
+    //   text: TextSpan(
+    //     text: 'Align face within outline',
+    //     style: TextStyle(
+    //       color: Colors.yellow,
+    //       fontSize: size.width/90,fontWeight: FontWeight.bold
+    //     ),
+    //   ),
+    //   textDirection: TextDirection.ltr,
+    // );
+    // textPainter.layout();
+    // textPainter.paint(
+    //   canvas,
+    //   Offset(
+    //     centerX - textPainter.width / 2,
+    //     size.height * 0.9,
+    //   ),
+    // );
   }
 
   @override

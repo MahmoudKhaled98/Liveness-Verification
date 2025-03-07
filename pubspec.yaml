@@ -1,5 +1,7 @@
 name: liveness_verify
-description: "A Flutter Web application designed for real-time face alignment and liveness detection using WebRTC and AWS Rekognition. The app captures live video, analyzes facial positioning, and ensures the user is properly centered. It provides real-time feedback for misaligned faces and automatically retries capture until the correct position is achieved. To prevent spoofing, it detects liveness by analyzing facial movements like blinking and head turns. Built with Clean Architecture, BLoC state management, and secure API integration."
+description: "A sophisticated FlutterWeb application designed for real-time face alignment and liveness detection using WebRTC 
+and AWS Rekognition. This system provides a secure and user-friendly way to verify the presence of a real person through facial analysis and movement detection."
+
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -38,7 +40,6 @@ dependencies:
   get_it: ^8.0.3
   dartz: ^0.10.1
   flutter_webrtc: ^0.12.10
-  aws_rekognition_api: ^2.0.0
   http: ^1.3.0
   image: ^4.5.3
 dev_dependencies:
