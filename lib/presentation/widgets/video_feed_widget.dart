@@ -77,7 +77,7 @@ class VideoFeedWidgetState extends State<VideoFeedWidget> {
   void _startCapturing() {
     print('VideoFeedWidget: Starting capture timer');
     _captureTimer?.cancel();
-    _captureTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _captureTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
       if (widget.startCapturing) {
         print('VideoFeedWidget: Capturing frame');
         _captureFrame();

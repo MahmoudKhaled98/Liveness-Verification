@@ -94,7 +94,7 @@ class FaceAnalysisResult {
   bool get isFaceDetected =>
       boundingBox.isNotEmpty &&
       landmarks.isNotEmpty &&
-      confidence > 90;
+      confidence > 98;
 
   bool get isProperDistance {
     if (!isFaceDetected) return false;
@@ -120,9 +120,9 @@ class FaceAnalysisResult {
       return false;
     }
 
-    return yawValue.abs() < 15 &&
-           pitchValue.abs() < 15 &&
-           rollValue.abs() < 15;
+    return yawValue.abs() < 20 && //15
+           pitchValue.abs() < 15 && //15
+           rollValue.abs() < 5;//15
   }
 
   bool get isProperlyPositioned => isAligned && isProperDistance;
@@ -206,7 +206,7 @@ class FacePosition {
 
   /// Whether the face is properly aligned within acceptable angles.
   bool get isProperlyAligned =>
-      yaw.abs() < 15 && pitch.abs() < 15 && roll.abs() < 15;
+      yaw.abs() < 15 && pitch.abs() < 2 && roll.abs() < 0.008;   // 15 15 15
 }
 
 /// Represents the bounding box of a detected face.

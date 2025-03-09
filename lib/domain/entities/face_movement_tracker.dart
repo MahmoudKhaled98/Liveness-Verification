@@ -36,9 +36,9 @@ class FaceMovementTracker {
   FaceMovementTracker({
     FaceDetectionConfig? config,
   }) : config = config ?? const FaceDetectionConfig(
-    movementThreshold: 3.5,
-    eyeMovementThreshold: 0.0170,
-    requiredFrames: 3,
+    movementThreshold: 10,
+    eyeMovementThreshold: 0.028,
+    requiredFrames: 6,
   );
 
   /// Processes a new frame of face tracking data.
@@ -274,10 +274,10 @@ class FaceMovementTracker {
       return 'Please move your head...';
     }
     if (!_headMovementConfirmed) {
-      return 'Please move your head slightly';
+      return 'Please move your head slightly to the right and left.';
     }
     if (!_eyeMovementConfirmed) {
-      return 'Now, please look around naturally';
+      return 'Now, please look around naturally while moving your head slightly';
     }
     if (!_smileDetected) {
       return 'Please smile :)';

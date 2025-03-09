@@ -22,10 +22,12 @@ class StartVerification extends FaceEvent {}
 class StopVerification extends FaceEvent {
   final bool verified;
   final FaceAnalysisResult? result;
+  final String? message;
 
   StopVerification({
     required this.verified,
     this.result,
+    this.message,
   });
 }
 
