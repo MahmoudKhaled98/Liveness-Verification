@@ -11,8 +11,8 @@ class FaceDetectionConfig {
 
   /// Creates a new [FaceDetectionConfig] instance with default values.
   const FaceDetectionConfig({
-    this.movementThreshold = 10,  //3.5
-    this.eyeMovementThreshold = 0.028, //0.0178
+    this.movementThreshold = 9,  //3.5
+    this.eyeMovementThreshold = 0.02, //0.0178
     this.requiredFrames = 6,//4
   });
 } 

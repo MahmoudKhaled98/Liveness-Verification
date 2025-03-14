@@ -29,6 +29,9 @@ class FaceMovementTracker {
   /// Whether a smile has been detected.
   bool _smileDetected = false;
 
+  /// Whether the face is properly positioned and ready for liveness check
+  bool _isProperlyPositioned = false;
+
   /// Creates a new [FaceMovementTracker] instance.
   ///
   /// Optionally accepts [config] for customizing detection parameters.
@@ -36,8 +39,8 @@ class FaceMovementTracker {
   FaceMovementTracker({
     FaceDetectionConfig? config,
   }) : config = config ?? const FaceDetectionConfig(
-    movementThreshold: 10,
-    eyeMovementThreshold: 0.028,
+    movementThreshold: 9,
+    eyeMovementThreshold: 0.020, //28
     requiredFrames: 6,
   );
 
@@ -47,86 +50,91 @@ class FaceMovementTracker {
   /// and [faceDetails] to update movement detection state. Processes movements
   /// in sequence: head movement, then eye movement, then smile detection.
   void addFrame(
-    double? yaw,
-    double? pitch,
-    double? roll,
+    double yaw,
+    double pitch,
+    double roll,
     List<Map<String, dynamic>> landmarks,
     Map<String, dynamic> faceDetails,
   ) {
-    if (!_isValidFrameData(yaw, pitch, roll, landmarks, faceDetails)) {
-      reset();
-      return;
-    }
+    print('Adding frame for movement tracking:');
+    print('- Current yaw: $yaw');
+    print('- Current pitch: $pitch');
+    print('- Current roll: $roll');
 
-    _processHeadMovement(yaw!, pitch!, roll!);
+    // Set properly positioned flag first
+    _isProperlyPositioned = true;
 
-    if (_headMovementConfirmed) {
-      _processEyeMovements(landmarks);
+    // Track head movement
+    if (!_headMovementConfirmed) {
+      final movement = FaceMovement(yaw: yaw, pitch: pitch, roll: roll);
 
-      if (_eyeMovementConfirmed) {
-        _processSmile(faceDetails);
+      if (poseHistory.length >= config.requiredFrames) {
+        poseHistory.removeAt(0);
+      }
+      poseHistory.add(movement);
+
+      // Check for significant movement
+      if (poseHistory.length >= 2) {
+        for (int i = 1; i < poseHistory.length; i++) {
+          final current = poseHistory[i];
+          final previous = poseHistory[i - 1];
+
+          final deltaYaw = (current.yaw - previous.yaw).abs();
+          final deltaPitch = (current.pitch - previous.pitch).abs();
+          final deltaRoll = (current.roll - previous.roll).abs();
+
+          print('Movement deltas:');
+          print('- Delta yaw: $deltaYaw');
+          print('- Delta pitch: $deltaPitch');
+          print('- Delta roll: $deltaRoll');
+          print('- Threshold: ${config.movementThreshold}');
+
+          if (deltaYaw > config.movementThreshold ||
+              deltaPitch > config.movementThreshold ||
+              deltaRoll > config.movementThreshold) {
+            print('Significant movement detected!');
+            _headMovementConfirmed = true;
+            break;
+          }
+        }
       }
     }
+
+    // Only proceed with eye tracking if head movement is confirmed
+    if (_headMovementConfirmed && !_eyeMovementConfirmed) {
+      _trackEyeMovement(landmarks);
+    }
+
+    // Only track smile after eye movement is confirmed
+    if (_headMovementConfirmed && _eyeMovementConfirmed && !_smileDetected) {
+      _trackSmile(faceDetails);
+    }
+
+    print('Movement tracking status:');
+    print('- Head movement confirmed: $_headMovementConfirmed');
+    print('- Eye movement confirmed: $_eyeMovementConfirmed');
+    print('- Smile detected: $_smileDetected');
   }
 
   /// Validates that all required face data is present and valid.
-  bool _isValidFrameData(
-    double? yaw,
-    double? pitch,
-    double? roll,
-    List<Map<String, dynamic>> landmarks,
-    Map<String, dynamic> faceDetails,
-  ) {
-    return yaw != null &&
-        pitch != null &&
-        roll != null &&
-        landmarks.isNotEmpty &&
-        faceDetails.isNotEmpty;
-  }
-
-  /// Processes head movement data to detect significant changes.
-  ///
-  /// Updates pose history and checks for significant movement patterns.
-  void _processHeadMovement(double yaw, double pitch, double roll) {
-    final movement = FaceMovement(yaw: yaw, pitch: pitch, roll: roll);
-
-    if (poseHistory.length >= config.requiredFrames) {
-      poseHistory.removeAt(0);
-    }
-    poseHistory.add(movement);
-
-    if (!_headMovementConfirmed) {
-      _headMovementConfirmed = _hasDetectedHeadMovement();
-    }
-  }
-
-  /// Determines if significant head movement has occurred.
-  ///
-  /// Analyzes the pose history to detect movements exceeding the threshold.
-  bool _hasDetectedHeadMovement() {
-    if (poseHistory.length < config.requiredFrames) return false;
-
-    for (int i = 1; i < poseHistory.length; i++) {
-      final current = poseHistory[i];
-      final previous = poseHistory[i - 1];
-
-      final movement = FaceMovement(
-        yaw: current.yaw - previous.yaw,
-        pitch: current.pitch - previous.pitch,
-        roll: current.roll - previous.roll,
-      );
-
-      if (movement.isSignificantMovement(config.movementThreshold)) {
-        return true;
-      }
-    }
-    return false;
-  }
+  // bool _isValidFrameData(
+  //   double? yaw,
+  //   double? pitch,
+  //   double? roll,
+  //   List<Map<String, dynamic>> landmarks,
+  //   Map<String, dynamic> faceDetails,
+  // ) {
+  //   return yaw != null &&
+  //       pitch != null &&
+  //       roll != null &&
+  //       landmarks.isNotEmpty &&
+  //       faceDetails.isNotEmpty;
+  // }
 
   /// Processes eye movement data to detect gaze changes.
   ///
   /// Extracts and tracks eye positions to detect natural eye movements.
-  void _processEyeMovements(List<Map<String, dynamic>> landmarks) {
+  void _trackEyeMovement(List<Map<String, dynamic>> landmarks) {
     if (!_headMovementConfirmed) return;
 
     final eyePoints = _extractEyePoints(landmarks);
@@ -229,7 +237,7 @@ class FaceMovementTracker {
   /// Processes smile detection from face details.
   ///
   /// Analyzes smile confidence and emotion data to detect genuine smiles.
-  void _processSmile(Map<String, dynamic> faceDetails) {
+  void _trackSmile(Map<String, dynamic> faceDetails) {
     if (!_eyeMovementConfirmed) return;
 
     if (faceDetails['Smile'] != null) {
@@ -262,22 +270,23 @@ class FaceMovementTracker {
     _headMovementConfirmed = false;
     _eyeMovementConfirmed = false;
     _smileDetected = false;
+    _isProperlyPositioned = false;
   }
 
   /// Whether all required liveness checks have been confirmed.
   bool get isLivenessConfirmed =>
       _headMovementConfirmed && _eyeMovementConfirmed && _smileDetected;
 
-  /// Gets the current liveness verification status message.
+  /// Gets a message describing the current liveness status.
   String get livenessMessage {
-    if (poseHistory.length < config.requiredFrames) {
+    if (!_isProperlyPositioned) {
       return 'Please move your head...';
     }
     if (!_headMovementConfirmed) {
       return 'Please move your head slightly to the right and left.';
     }
     if (!_eyeMovementConfirmed) {
-      return 'Now, please look around naturally while moving your head slightly';
+      return 'Now, please look around naturally';
     }
     if (!_smileDetected) {
       return 'Please smile :)';
@@ -289,4 +298,5 @@ class FaceMovementTracker {
   bool get isHeadMovementConfirmed => _headMovementConfirmed;
   bool get isEyeMovementConfirmed => _eyeMovementConfirmed;
   bool get isSmileDetected => _smileDetected;
+  bool get isProperlyPositioned => _isProperlyPositioned;
 }

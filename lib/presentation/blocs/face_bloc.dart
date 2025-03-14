@@ -77,13 +77,31 @@ class FaceBloc extends Bloc<FaceEvent, FaceState> {
     on<AnalyzeFace>((event, emit) async {
       if (!state.isAnalyzing || _isTimedOut) return;
 
+      print('FaceBloc: Processing AnalyzeFace event');
       final result = await analyzeFaceUseCase.execute(event.faceData);
-
-      // Check if still analyzing and not timed out
+      
       if (state.isAnalyzing && !_isTimedOut) {
         emit(result.fold(
-              (failure) => FaceError(failure.message),
-              (success) => FaceAnalyzed(success),
+          (failure) => FaceError(failure.message),
+          (success) {
+            print('FaceBloc: Analysis success');
+            print('- Face detected: ${success.isFaceDetected}');
+            print('- Screen detected: ${success.screenDetection.isScreenDetected}');
+            print('- Ready for analysis: ${success.isReadyForAnalysis}');
+            print('- Status message: ${success.statusMessage}');
+
+            if (!success.isFaceDetected) {
+              return FaceAnalyzed(success);
+            }
+
+            // Check all positioning requirements including screen
+            if (!success.isProperlyPositioned) {
+              print('FaceBloc: Face not properly positioned or screen detected');
+              return FaceAnalyzed(success);
+            }
+
+            return FaceAnalyzed(success);
+          },
         ));
       }
     });

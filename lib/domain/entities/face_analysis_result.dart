@@ -1,4 +1,6 @@
 import 'face_movement_tracker.dart';
+import 'glasses_detection_result.dart';
+import 'screen_detection_result.dart';
 
 /// Entity representing the results of face analysis.
 ///
@@ -24,6 +26,12 @@ class FaceAnalysisResult {
   /// Detailed facial analysis data.
   final Map<String, dynamic> faceDetails;
 
+  /// Result of glasses detection.
+  final GlassesDetectionResult glassesDetection;
+
+  /// Result of screen detection
+  final ScreenDetectionResult screenDetection;
+
   /// Optional message describing the analysis result.
   final String? message;
 
@@ -41,6 +49,8 @@ class FaceAnalysisResult {
     required this.pose,
     required this.quality,
     required this.faceDetails,
+    required this.glassesDetection,
+    required this.screenDetection,
     this.message,
   });
 
@@ -90,15 +100,48 @@ class FaceAnalysisResult {
   bool get isTooClose => faceWidth > tooCloseThreshold || faceHeight > tooCloseThreshold;
   bool get isTooFar => faceWidth < tooFarThreshold || faceHeight < tooFarThreshold;
 
-  // Add face detection check
-  bool get isFaceDetected =>
-      boundingBox.isNotEmpty &&
-      landmarks.isNotEmpty &&
-      confidence > 98;
+  /// Whether a face is detected in the frame
+  bool get isFaceDetected {
+    print('Checking face detection:');
+    print('- Bounding box: $boundingBox');
+    print('- Landmarks count: ${landmarks.length}');
+    print('- Confidence: $confidence');
+    
+    // Check if bounding box has valid dimensions
+    final hasValidBoundingBox = boundingBox.containsKey('Width') && 
+                               boundingBox.containsKey('Height') &&
+                               boundingBox.containsKey('Left') &&
+                               boundingBox.containsKey('Top');
+    
+    print('- Has valid bounding box: $hasValidBoundingBox');
+    
+    return hasValidBoundingBox &&
+           landmarks.isNotEmpty &&
+           confidence > 90;  // Lower threshold slightly
+  }
 
+  /// Whether the face is at a proper distance
   bool get isProperDistance {
-    if (!isFaceDetected) return false;
-    return !isTooClose && !isTooFar;
+    if (!isFaceDetected) {
+      print('Face not detected, distance check failed');
+      return false;
+    }
+    
+    // Get bounding box dimensions
+    final width = boundingBox['Width'] as double;
+    final height = boundingBox['Height'] as double;
+    
+    final isTooClose = width > tooCloseThreshold || height > tooCloseThreshold;
+    final isTooFar = width < tooFarThreshold || height < tooFarThreshold;
+    
+    final isProper = !isTooClose && !isTooFar;
+    print('Distance check:');
+    print('- Width: $width, Height: $height');
+    print('- Too close: $isTooClose');
+    print('- Too far: $isTooFar');
+    print('- Is proper: $isProper');
+    
+    return isProper;
   }
 
   String get distanceMessage {
@@ -125,7 +168,13 @@ class FaceAnalysisResult {
            rollValue.abs() < 5;//15
   }
 
-  bool get isProperlyPositioned => isAligned && isProperDistance;
+  /// Whether the face is properly positioned and ready for liveness check
+  bool get isProperlyPositioned => 
+      isFaceDetected && 
+      isProperDistance && 
+      isAligned && 
+      !glassesDetection.hasAnyGlasses &&
+      !screenDetection.isScreenDetected;  // Add screen check here
 
   /// Whether required head movements have been confirmed.
   bool get isHeadMovementConfirmed => _movementTracker.isHeadMovementConfirmed;
@@ -137,39 +186,81 @@ class FaceAnalysisResult {
   bool get isSmileDetected => _movementTracker.isSmileDetected;
 
   bool get isLive {
+    // Check all positioning requirements first
     if (!isProperlyPositioned) {
-      print('Face not properly positioned, resetting liveness detection');
+      print('Face not properly positioned or screen detected, resetting liveness detection');
       _movementTracker.reset();
       return false;
     }
 
-    _movementTracker.addFrame(
-      yaw,
-      pitch,
-      roll,
-      landmarks,
-      faceDetails,
-    );
+    // If all checks pass, track movement
+    if (yaw != null && pitch != null && roll != null) {
+      print('Tracking movement - Yaw: $yaw, Pitch: $pitch, Roll: $roll');
+      _movementTracker.addFrame(
+        yaw!,
+        pitch!,
+        roll!,
+        landmarks,
+        faceDetails,
+      );
+    }
 
-    return confidence > 90 && _movementTracker.isLivenessConfirmed;
+    return _movementTracker.isLivenessConfirmed;
   }
-
 
   /// Gets the current liveness verification status message.
   String get livenessMessage {
+    // Check for glasses first
+    if (glassesDetection.hasAnyGlasses) {
+      return glassesDetection.message;
+    }
+
+    // Only show movement instructions if no glasses detected
     if (!isProperlyPositioned) {
       return 'Adjust position before liveness check';
     }
+
+    // Only show movement tracker messages if no glasses and properly positioned
     return _movementTracker.livenessMessage;
   }
 
   /// Gets a message describing the current verification status.
   String get statusMessage {
-    if (!isFaceDetected) return 'Show your face to the camera';
-    if (isTooClose) return 'Move back from the camera';
-    if (isTooFar) return 'Move closer to the camera';
-    if (!isAligned) return 'Center your face and look straight ahead';
-    if (!isLive) return livenessMessage;
+    if (!isFaceDetected) {
+      return 'Show your face to the camera';
+    }
+    
+    List<String> issues = [];
+    
+    if (!isProperDistance) {
+      if (isTooClose) {
+        issues.add('Move back from the camera');
+      } else if (isTooFar) {
+        issues.add('Move closer to the camera');
+      }
+    }
+    
+    if (!isAligned) {
+      issues.add('Center your face and look straight ahead');
+    }
+    
+    if (glassesDetection.hasAnyGlasses) {
+      issues.add(glassesDetection.message);
+    }
+
+    if (screenDetection.isScreenDetected) {
+      issues.add('Please remove screen in front of camera');
+    }
+    
+    // If there are issues, return them all
+    if (issues.isNotEmpty) {
+      return issues.join('\n');
+    }
+    
+    if (!isLive) {
+      return livenessMessage;
+    }
+    
     return 'Verification Complete';
   }
 
@@ -179,6 +270,19 @@ class FaceAnalysisResult {
   /// Resets the liveness detection state.
   static void resetLivenessDetection() {
     _movementTracker.reset();
+  }
+
+  /// Whether the face is ready for liveness checks
+  bool get isReadyForAnalysis {
+    if (screenDetection.isScreenDetected) {
+      print('Screen detected, not ready for analysis');
+      return false;
+    }
+    
+    return isFaceDetected && 
+           isProperDistance &&
+           isAligned &&
+           !glassesDetection.hasAnyGlasses;
   }
 }
 

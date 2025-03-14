@@ -36,45 +36,28 @@ class FaceRemoteDataSourceImpl implements FaceRemoteDataSource {
         }),
       );
 
-      // Handle non-200 responses
+      print('API Response received: ${response.statusCode}');
+      print('API Response : ${response.body}');
+
       if (response.statusCode != 200) {
         throw ServerFailure("Server error: ${response.body}");
       }
 
       // Parse response
       final Map<String, dynamic> jsonResponse = jsonDecode(response.body);
-      final faceDetails = jsonResponse['FaceDetails'] as List?;
-
-      // Handle no face detected
-      if (faceDetails == null || faceDetails.isEmpty) {
+      
+      if (jsonResponse['FaceDetails'] == null || 
+          (jsonResponse['FaceDetails'] as List).isEmpty) {
+        print('No face details in response');
         return {
-          'boundingBox': {},
-          'confidence': 0.0,
-          'landmarks': [],
-          'pose': {},
-          'quality': {},
-          'faceDetails': {},
-          'message': 'Show your face to the camera',
+          'FaceDetails': [],
         };
       }
 
-      // Extract face details
-      final firstFace = faceDetails.first;
-      return {
-        'boundingBox': firstFace['BoundingBox'],
-        'confidence': firstFace['Confidence'],
-        'landmarks': (firstFace['Landmarks'] as List).map((l) {
-          return {
-            'type': l['Type'].toString().toLowerCase(),
-            'x': l['X'] as double,
-            'y': l['Y'] as double,
-          };
-        }).toList(),
-        'pose': firstFace['Pose'],
-        'quality': firstFace['Quality'],
-        'faceDetails': firstFace,
-      };
+      print('Face details found in response');
+      return jsonResponse; // Return the raw response
     } catch (e) {
+      print('Error in analyzeFace: $e');
       throw ServerFailure(e.toString());
     }
   }

@@ -49,6 +49,21 @@ The system uses multiple factors to verify liveness:
 - Progress indicators for liveness verification
 
 
+### 4. Anti-Spoofing Measures
+#### Screen Detection
+- Monitors for digital screens or displays in front of camera
+- Detects based on:
+   - Face occlusion detection
+   - Brightness analysis (threshold > 86.0)
+   - Image sharpness analysis (threshold < 70.0)
+- Real-time feedback when screen detected
+- Prevents verification progress until screen removed
+
+#### Glasses Detection
+- Detects both regular eyeglasses and sunglasses
+- Prevents verification with glasses to avoid glare during detection.
+- Clear user feedback for glasses removal
+
 ## Architecture
 
 The project follows Clean Architecture principles with three main layers:
